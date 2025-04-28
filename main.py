@@ -347,9 +347,8 @@ def monitor_symbols(symbols, interval=10, auto_trade=False, risk_percent=1.0, or
                             # Place order
                             result = place_order_from_signal(
                                 symbol=symbol,
-                                signal=signal,
-                                risk_percent=risk_percent,
-                                order_type=order_type
+                                order_type=order_type,
+                                signal_strength=signal['strength']
                             )
                             
                             if result:
@@ -408,6 +407,59 @@ def monitor_position_for_quick_close(position_id, target_pips):
             
     except Exception as e:
         print(f"{Fore.RED}Error monitoring position: {str(e)}{Style.RESET_ALL}")
+
+def place_order_from_signal(symbol, order_type, signal_strength):
+    """Place an order based on the trading signal."""
+    try:
+        # Define volume based on signal strength (example logic)
+        volume = signal_strength * 0.1  # Adjust volume as needed
+        
+        # Get current price
+        current_price = mt5.symbol_info_tick(symbol).ask if order_type == mt5.ORDER_TYPE_BUY else mt5.symbol_info_tick(symbol).bid
+        
+        # Set stop loss and take profit
+        sl = 0  # Default to 0, will be set below
+        tp = 0  # Default to 0, will be set below
+        
+        if order_type == mt5.ORDER_TYPE_BUY:
+            sl = current_price - (10 * mt5.symbol_info(symbol).point)  # Set SL 10 pips below current price
+            tp = current_price + (20 * mt5.symbol_info(symbol).point)  # Set TP 20 pips above current price
+        elif order_type == mt5.ORDER_TYPE_SELL:
+            sl = current_price + (10 * mt5.symbol_info(symbol).point)  # Set SL 10 pips above current price
+            tp = current_price - (20 * mt5.symbol_info(symbol).point)  # Set TP 20 pips below current price
+        
+        # Prepare the trade request
+        request = {
+            "action": mt5.TRADE_ACTION_DEAL,
+            "symbol": symbol,
+            "volume": volume,
+            "type": order_type,
+            "price": current_price,
+            "sl": sl,
+            "tp": tp,
+            "deviation": 20,
+            "magic": 234000,
+            "comment": "Order from signal",
+            "type_time": mt5.ORDER_TIME_GTC,
+            "type_filling": mt5.ORDER_FILLING_IOC,
+        }
+        
+        # Send the trade request
+        result = mt5.order_send(request)
+        
+        if result is None:
+            print(f"Order send failed: {mt5.last_error()}")
+            return None
+        
+        if result.retcode != mt5.TRADE_RETCODE_DONE:
+            print(f"Trade failed: {result.comment}")
+            return None
+        
+        print(f"Trade executed: {symbol} {order_type} {volume} @ {request['price']}")
+        return result  # Return the result for further processing if needed
+            
+    except Exception as e:
+        print(f"Error placing order: {str(e)}")
 
 if __name__ == "__main__":
     print(f"{Fore.CYAN}=== MetaTrader 5 Python Interface ==={Style.RESET_ALL}")
