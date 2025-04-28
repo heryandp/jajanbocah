@@ -286,6 +286,129 @@ def check_trading_allowed():
     finally:
         shutdown_mt5()
 
+def monitor_symbols(symbols, interval=10, auto_trade=False, risk_percent=1.0, order_type="MARKET", 
+                   min_signal_strength=3, scalping_mode=False, quick_close=False, quick_close_target=5.0):
+    """
+    Monitor multiple symbols and execute trades based on signals
+    
+    Args:
+        symbols (list): List of symbols to monitor
+        interval (int): Update interval in seconds
+        auto_trade (bool): Whether to automatically execute trades
+        risk_percent (float): Risk percentage per trade
+        order_type (str): Type of order to place (MARKET, LIMIT, STOP, STOP_LIMIT)
+        min_signal_strength (int): Minimum signal strength to consider (1-5)
+        scalping_mode (bool): Whether to use scalping mode
+        quick_close (bool): Whether to use quick close feature
+        quick_close_target (float): Target profit in pips for quick close
+    """
+    print(f"\n{Fore.CYAN}=== Starting Symbol Monitoring ==={Style.RESET_ALL}")
+    print(f"Symbols: {', '.join(symbols)}")
+    print(f"Interval: {interval} seconds")
+    print(f"Auto Trade: {'Enabled' if auto_trade else 'Disabled'}")
+    if auto_trade:
+        print(f"Risk per trade: {risk_percent}%")
+        print(f"Order type: {order_type}")
+        print(f"Min signal strength: {min_signal_strength}")
+        print(f"Scalping mode: {'Enabled' if scalping_mode else 'Disabled'}")
+        if scalping_mode:
+            print(f"Quick close: {'Enabled' if quick_close else 'Disabled'}")
+            if quick_close:
+                print(f"Quick close target: {quick_close_target} pips")
+    
+    try:
+        while True:
+            for symbol in symbols:
+                try:
+                    # Get price history
+                    df = get_price_history(symbol, timeframe=mt5.TIMEFRAME_M1 if scalping_mode else mt5.TIMEFRAME_M15)
+                    if df is None or df.empty:
+                        print(f"{Fore.YELLOW}No data available for {symbol}{Style.RESET_ALL}")
+                        continue
+                    
+                    # Calculate indicators
+                    indicators_df = calculate_indicators(df)
+                    
+                    # Get trading signal
+                    signal = get_trade_signal(indicators_df)
+                    
+                    # Print current status
+                    current_price = indicators_df['close'].iloc[-1]
+                    print(f"\n{Fore.CYAN}{symbol} - {datetime.now().strftime('%H:%M:%S')}{Style.RESET_ALL}")
+                    print(f"Price: {current_price}")
+                    print(f"Signal: {signal['signal']} (Strength: {signal['strength']})")
+                    if signal['reason']:
+                        print(f"Reason: {', '.join(signal['reason'])}")
+                    
+                    # Check if we should trade
+                    if auto_trade and signal['strength'] >= min_signal_strength:
+                        # Adjust signal strength threshold for scalping
+                        if scalping_mode and signal['strength'] >= 2:  # Lower threshold for scalping
+                            # Place order
+                            result = place_order_from_signal(
+                                symbol=symbol,
+                                signal=signal,
+                                risk_percent=risk_percent,
+                                order_type=order_type
+                            )
+                            
+                            if result:
+                                print(f"{Fore.GREEN}Order placed successfully{Style.RESET_ALL}")
+                                
+                                # If quick close is enabled, monitor the position
+                                if quick_close and result.get('position_id'):
+                                    monitor_position_for_quick_close(
+                                        position_id=result['position_id'],
+                                        target_pips=quick_close_target
+                                    )
+                            else:
+                                print(f"{Fore.RED}Failed to place order{Style.RESET_ALL}")
+                    
+                except Exception as e:
+                    print(f"{Fore.RED}Error processing {symbol}: {str(e)}{Style.RESET_ALL}")
+            
+            time.sleep(interval)
+            
+    except KeyboardInterrupt:
+        print(f"\n{Fore.YELLOW}Monitoring stopped by user{Style.RESET_ALL}")
+    except Exception as e:
+        print(f"{Fore.RED}Error in monitoring: {str(e)}{Style.RESET_ALL}")
+
+def monitor_position_for_quick_close(position_id, target_pips):
+    """
+    Monitor a position and close it when target profit is reached
+    
+    Args:
+        position_id (int): Position ticket ID
+        target_pips (float): Target profit in pips
+    """
+    try:
+        while True:
+            position = mt5.positions_get(ticket=position_id)
+            if not position:
+                break
+                
+            position = position[0]
+            current_profit = position.profit
+            current_price = position.price_current
+            open_price = position.price_open
+            
+            # Calculate profit in pips
+            if position.type == mt5.POSITION_TYPE_BUY:
+                profit_pips = (current_price - open_price) * 10000  # For 5-digit brokers
+            else:
+                profit_pips = (open_price - current_price) * 10000
+                
+            if profit_pips >= target_pips:
+                print(f"{Fore.GREEN}Quick close target reached: {profit_pips:.1f} pips{Style.RESET_ALL}")
+                close_position(position_id)
+                break
+                
+            time.sleep(1)  # Check every second
+            
+    except Exception as e:
+        print(f"{Fore.RED}Error monitoring position: {str(e)}{Style.RESET_ALL}")
+
 if __name__ == "__main__":
     print(f"{Fore.CYAN}=== MetaTrader 5 Python Interface ==={Style.RESET_ALL}")
     print(f"{Fore.YELLOW}Choose an option:{Style.RESET_ALL}")
@@ -307,9 +430,19 @@ if __name__ == "__main__":
             print(f"{Fore.RED}Failed to initialize MetaTrader 5{Style.RESET_ALL}")
         else:
             try:
-                # Ask if using scalping mode
+                # Ask for scalping mode
                 scalping_mode = input(f"{Fore.YELLOW}Use scalping mode for small, frequent profits? (y/n, default: n): {Style.RESET_ALL}")
                 use_scalping = scalping_mode.lower() == 'y'
+                
+                # Ask for quick close if scalping is enabled
+                quick_close = False
+                quick_close_target = 5.0
+                if use_scalping:
+                    quick_close_input = input(f"{Fore.YELLOW}Enable quick close feature? (y/n, default: n): {Style.RESET_ALL}")
+                    quick_close = quick_close_input.lower() == 'y'
+                    if quick_close:
+                        target_input = input(f"{Fore.YELLOW}Enter quick close target in pips (default 5.0): {Style.RESET_ALL}")
+                        quick_close_target = float(target_input) if target_input.strip() else 5.0
                 
                 # Ask for symbols to monitor
                 symbols_input = input(f"{Fore.YELLOW}Enter symbols to monitor (comma separated, e.g., EURUSD,GBPUSD): {Style.RESET_ALL}")
@@ -373,7 +506,10 @@ if __name__ == "__main__":
                     auto_trade=auto_trade,
                     risk_percent=risk_percent,
                     order_type=order_type,
-                    min_signal_strength=min_signal_strength
+                    min_signal_strength=min_signal_strength,
+                    scalping_mode=use_scalping,
+                    quick_close=quick_close,
+                    quick_close_target=quick_close_target
                 )
             finally:
                 shutdown_mt5()

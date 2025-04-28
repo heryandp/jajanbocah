@@ -63,12 +63,12 @@ def create_chart_figure(symbol, timeframe=mt5.TIMEFRAME_M15, bars=100):
     
     # Add moving averages to be plotted
     ma_styles = [
-        mpf.make_addplot(indicators_df['sma_5'], color='blue', width=0.7),
-        mpf.make_addplot(indicators_df['sma_20'], color='red', width=0.7),
-        mpf.make_addplot(indicators_df['sma_50'], color='green', width=0.7),
-        mpf.make_addplot(indicators_df['bb_upper'], color='gray', alpha=0.3),
-        mpf.make_addplot(indicators_df['bb_lower'], color='gray', alpha=0.3),
-        mpf.make_addplot(indicators_df['bb_middle'], color='purple', alpha=0.5),
+        mpf.make_addplot(indicators_df['sma_5'], color='blue', width=0.7, ax=ax1),
+        mpf.make_addplot(indicators_df['sma_20'], color='red', width=0.7, ax=ax1),
+        mpf.make_addplot(indicators_df['sma_50'], color='green', width=0.7, ax=ax1),
+        mpf.make_addplot(indicators_df['bb_upper'], color='gray', alpha=0.3, ax=ax1),
+        mpf.make_addplot(indicators_df['bb_lower'], color='gray', alpha=0.3, ax=ax1),
+        mpf.make_addplot(indicators_df['bb_middle'], color='purple', alpha=0.5, ax=ax1),
     ]
     
     # Plot the candlestick chart
@@ -518,10 +518,9 @@ def show_chart_window(symbol, timeframe=mt5.TIMEFRAME_M15, auto_refresh=True, re
         auto_refresh (bool): Whether to auto-refresh the chart
         refresh_interval (int): Refresh interval in seconds
     """
-    app = QApplication(sys.argv)
     window = ChartWindow(symbol, timeframe, auto_refresh, refresh_interval)
     window.show()
-    sys.exit(app.exec_())
+    return window
 
 if __name__ == "__main__":
     # Example usage

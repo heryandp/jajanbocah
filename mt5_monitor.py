@@ -28,7 +28,7 @@ def get_symbol_price(symbol):
         "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
     }
 
-def get_price_history(symbol, timeframe=mt5.TIMEFRAME_M5, bars=100):
+def get_price_history(symbol, timeframe=mt5.TIMEFRAME_M5, bars=100, from_date=None):
     """
     Get historical price data for a symbol
     
@@ -36,6 +36,7 @@ def get_price_history(symbol, timeframe=mt5.TIMEFRAME_M5, bars=100):
         symbol (str): Symbol name (e.g., "EURUSD")
         timeframe (int): MT5 timeframe constant (default: mt5.TIMEFRAME_M5)
         bars (int): Number of bars to retrieve (default: 100)
+        from_date (datetime, optional): Start date for data retrieval. If None, uses bars parameter
     
     Returns:
         pandas.DataFrame: Historical price data
@@ -65,7 +66,12 @@ def get_price_history(symbol, timeframe=mt5.TIMEFRAME_M5, bars=100):
             return None
     
     # Get historical data
-    rates = mt5.copy_rates_from_pos(symbol, timeframe, 0, bars)
+    if from_date:
+        # Convert datetime to timestamp
+        from_timestamp = int(from_date.timestamp())
+        rates = mt5.copy_rates_from(symbol, timeframe, from_timestamp, 0)
+    else:
+        rates = mt5.copy_rates_from_pos(symbol, timeframe, 0, bars)
     
     if rates is None:
         print(f"Failed to get historical data for {symbol}, error code: {mt5.last_error()}")
@@ -80,6 +86,11 @@ def get_price_history(symbol, timeframe=mt5.TIMEFRAME_M5, bars=100):
     # Convert to DataFrame
     df = pd.DataFrame(rates)
     df['time'] = pd.to_datetime(df['time'], unit='s')
+    
+    # Add volume column if it doesn't exist
+    if 'volume' not in df.columns:
+        print(f"Volume column not found, adding default volume of 1")
+        df['volume'] = 1
     
     return df
 
