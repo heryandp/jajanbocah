@@ -90,6 +90,35 @@ Price data and indicators are stored in the `price_data` directory by default:
 - `{symbol}_prices.csv` - Historical price data
 - `{symbol}_indicators.csv` - Technical indicators
 
+## Webapp Signal Trading (Next.js)
+
+Tersedia webapp berbasis Next.js di subfolder `webapp` untuk:
+- Generate signal trading otomatis berdasarkan indikator populer (RSI, MACD, MA, BB, dll)
+- Mendukung scalping/shortterm (M15/H1)
+- Data harga diambil dari Yahoo Finance (tanpa backend Python)
+- Pair default: GOLD, bisa pilih pair lain (BTCUSD, EURUSD, saham, dll)
+- Chart harga dan indikator langsung di web
+
+### Cara Menjalankan Webapp
+
+1. Masuk ke folder webapp:
+   ```bash
+   cd webapp
+   ```
+2. Install dependencies:
+   ```bash
+   npm install
+   ```
+3. Jalankan development server:
+   ```bash
+   npm run dev
+   ```
+4. Buka [http://localhost:3000](http://localhost:3000) di browser.
+
+### Deploy ke Vercel
+
+- Webapp siap untuk deploy ke Vercel (lihat instruksi di `webapp/README.md`)
+
 ## License
 
 This project is licensed under the MIT License - see the LICENSE file for details.
