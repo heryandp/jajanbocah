@@ -15,6 +15,17 @@ export default function SignalChart({ ohlc, signal, indicators }: { ohlc: OhlcPo
     return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
   };
 
+  function uniqueAsc<T extends { time: string }>(arr: T[]): T[] {
+    const seen = new Set();
+    return arr
+      .sort((a, b) => a.time.localeCompare(b.time))
+      .filter(item => {
+        if (seen.has(item.time)) return false;
+        seen.add(item.time);
+        return true;
+      });
+  }
+
   useEffect(() => {
     if (!ohlc || ohlc.length === 0 || !chartContainerRef.current) return;
     if (chartRef.current) {
@@ -30,43 +41,44 @@ export default function SignalChart({ ohlc, signal, indicators }: { ohlc: OhlcPo
       rightPriceScale: { borderColor: '#888' },
     });
     chartRef.current = chart;
-    // Candlestick
+    let mainSeries;
     if (ohlc[0].open !== undefined && ohlc[0].high !== undefined && ohlc[0].low !== undefined) {
-      const candleSeries = chart.addCandlestickSeries();
-      candleSeries.setData(
-        ohlc
-          .filter(d => typeof d.open === 'number' && typeof d.high === 'number' && typeof d.low === 'number' && typeof d.close === 'number')
-          .map(d => ({
-            time: toChartTime(d.time),
-            open: d.open!,
-            high: d.high!,
-            low: d.low!,
-            close: d.close
-          }))
+      mainSeries = chart.addCandlestickSeries();
+      mainSeries.setData(
+        uniqueAsc(
+          ohlc
+            .filter(d => typeof d.open === 'number' && typeof d.high === 'number' && typeof d.low === 'number' && typeof d.close === 'number')
+            .map(d => ({
+              time: toChartTime(d.time),
+              open: d.open!,
+              high: d.high!,
+              low: d.low!,
+              close: d.close
+            }))
+        )
       );
     } else {
-      // fallback line
-      const lineSeries = chart.addLineSeries({ color: '#f59e42', lineWidth: 2 });
-      lineSeries.setData(ohlc.map(d => ({ time: toChartTime(d.time), value: d.close })));
+      mainSeries = chart.addLineSeries({ color: '#f59e42', lineWidth: 2 });
+      mainSeries.setData(uniqueAsc(ohlc.map(d => ({ time: toChartTime(d.time), value: d.close }))));
     }
     // Volume
     if (ohlc[0].volume !== undefined) {
       const volumeSeries = chart.addHistogramSeries({ color: '#60a5fa', priceFormat: { type: 'volume' }, priceScaleId: 'vol' });
       volumeSeries.priceScale().applyOptions({ scaleMargins: { top: 0.7, bottom: 0 } });
-      volumeSeries.setData(ohlc.map(d => ({ time: toChartTime(d.time), value: d.volume ?? 0 })));
+      volumeSeries.setData(uniqueAsc(ohlc.map(d => ({ time: toChartTime(d.time), value: d.volume ?? 0 }))));
     }
     // MA, RSI, MACD jika ada
     if (indicators?.maArr && Array.isArray(indicators.maArr)) {
       const maSeries = chart.addLineSeries({ color: '#fbbf24', lineWidth: 1 });
-      maSeries.setData(indicators.maArr.map(d => ({ time: toChartTime(d.time), value: d.value })));
+      maSeries.setData(uniqueAsc(indicators.maArr.map(d => ({ time: toChartTime(d.time), value: d.value }))));
     }
     if (indicators?.rsiArr && Array.isArray(indicators.rsiArr)) {
       const rsiSeries = chart.addLineSeries({ color: '#38bdf8', lineWidth: 1 });
-      rsiSeries.setData(indicators.rsiArr.map(d => ({ time: toChartTime(d.time), value: d.value })));
+      rsiSeries.setData(uniqueAsc(indicators.rsiArr.map(d => ({ time: toChartTime(d.time), value: d.value }))));
     }
     if (indicators?.macdArr && Array.isArray(indicators.macdArr)) {
       const macdSeries = chart.addLineSeries({ color: '#a78bfa', lineWidth: 1 });
-      macdSeries.setData(indicators.macdArr.map(d => ({ time: toChartTime(d.time), value: d.value })));
+      macdSeries.setData(uniqueAsc(indicators.macdArr.map(d => ({ time: toChartTime(d.time), value: d.value }))));
     }
     // Icon signal di titik terakhir
     if (signal && ohlc.length > 0) {
@@ -78,21 +90,39 @@ export default function SignalChart({ ohlc, signal, indicators }: { ohlc: OhlcPo
         shape: signal === "BUY" ? "arrowUp" : "arrowDown",
         text: signal,
       };
-      // marker hanya untuk candlestick/line utama
-      if (ohlc[0].open !== undefined) {
-        chart.serieses()[0].setMarkers([marker]);
-      }
+      mainSeries.setMarkers([marker]);
     }
     // Responsive
     const handleResize = () => {
-      chart.applyOptions({ width: chartContainerRef.current?.clientWidth || 400 });
+      if (chartRef.current && chartContainerRef.current) {
+        chartRef.current.applyOptions({ width: chartContainerRef.current.clientWidth });
+      }
     };
     window.addEventListener('resize', handleResize);
     return () => {
       window.removeEventListener('resize', handleResize);
-      chart.remove();
+      if (chartRef.current) {
+        chartRef.current.remove();
+        chartRef.current = null;
+      }
     };
   }, [ohlc, signal, indicators]);
 
-  return <div ref={chartContainerRef} style={{ width: '100%', height: 400 }} />;
+  return <>
+    <div ref={chartContainerRef} style={{ width: '100%', height: 400 }} />
+    <button
+      onClick={() => {
+        if (chartRef.current) {
+          const dataUrl = chartRef.current.takeScreenshot();
+          const a = document.createElement('a');
+          a.href = dataUrl;
+          a.download = 'chart.png';
+          a.click();
+        }
+      }}
+      className="mt-2 px-4 py-2 bg-yellow-500 text-white rounded"
+    >
+      Download Chart
+    </button>
+  </>;
 } 

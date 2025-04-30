@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import dynamic from "next/dynamic";
 
 const INDICATORS = [
@@ -28,7 +28,7 @@ const TIMEFRAMES = [
   { label: "12 Bulan", value: "12mo" },
 ];
 
-const PAIRS = [
+const PAIRS_YAHOO = [
   { label: "GOLD", value: "GOLD" },
   { label: "BTCUSD", value: "BTC-USD" },
   { label: "EURUSD", value: "EURUSD=X" },
@@ -36,6 +36,11 @@ const PAIRS = [
   { label: "TSLA", value: "TSLA" },
   { label: "GOOG", value: "GOOG" },
   { label: "AMZN", value: "AMZN" },
+];
+
+const SOURCES = [
+  { label: 'MT5 Local (Realtime)', value: 'mt5' },
+  { label: 'Yahoo Finance (Online)', value: 'yahoo' },
 ];
 
 type IndicatorParam = { [key: string]: number };
@@ -63,9 +68,19 @@ type SignalResult = {
   signal?: string;
   error?: string;
   ohlc?: { time: number; close: number }[];
+  openPositionPrice?: number;
+  tp?: number;
+  sl?: number;
 };
 
 const Chart = dynamic(() => import("./SignalChart"), { ssr: false });
+
+const REFRESH_OPTIONS = [
+  { label: "Manual", value: 0 },
+  { label: "5 detik", value: 5000 },
+  { label: "10 detik", value: 10000 },
+  { label: "30 detik", value: 30000 },
+];
 
 export default function Home() {
   const [pair, setPair] = useState("GOLD");
@@ -76,6 +91,63 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<SignalResult | null>(null);
   const [showIndicator, setShowIndicator] = useState<{[key:string]:boolean}>({});
+  const [source, setSource] = useState('yahoo');
+  const [mt5Pairs, setMt5Pairs] = useState<{ label: string; value: string }[]>([]);
+  const [refreshInterval, setRefreshInterval] = useState(0); // ms
+  const [pairSearch, setPairSearch] = useState("");
+  const intervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  useEffect(() => {
+    if (source === 'mt5') {
+      fetch('http://localhost:5000/symbols')
+        .then(res => res.json())
+        .then(data => {
+          if (Array.isArray(data)) {
+            setMt5Pairs(data.map((s: string) => ({ label: s, value: s })));
+            setPair(data[0] || "");
+          }
+        })
+        .catch(() => setMt5Pairs([]));
+    }
+  }, [source]);
+
+  // Auto refresh logic
+  const fetchSignal = async () => {
+    setLoading(true);
+    setResult(null);
+    const res = await fetch("/api/signal", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        symbol: pair,
+        timeframe,
+        indicators: selectedIndicators,
+        source,
+      }),
+    });
+    const data = await res.json();
+    setResult(data);
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    if (refreshInterval && refreshInterval > 0) {
+      fetchSignal(); // fetch langsung saat interval berubah
+      if (intervalRef.current) clearInterval(intervalRef.current);
+      intervalRef.current = setInterval(fetchSignal, refreshInterval);
+      return () => {
+        if (intervalRef.current) clearInterval(intervalRef.current);
+      };
+    } else {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refreshInterval, pair, timeframe, selectedIndicators, source]);
+
+  // Reset result saat ganti pair/timeframe/indikator/source
+  useEffect(() => {
+    setResult(null);
+  }, [pair, timeframe, selectedIndicators, source]);
 
   const handleIndicatorChange = (value: string) => {
     setSelectedIndicators((prev) =>
@@ -99,21 +171,14 @@ export default function Home() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
-    setResult(null);
-    const res = await fetch("/api/signal", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        symbol: pair,
-        timeframe,
-        indicators: selectedIndicators,
-      }),
-    });
-    const data = await res.json();
-    setResult(data);
-    setLoading(false);
+    fetchSignal();
   };
+
+  // Filter pair list by search
+  const pairList = (source === 'mt5' ? mt5Pairs : PAIRS_YAHOO).filter(p =>
+    p.label.toLowerCase().includes(pairSearch.toLowerCase()) ||
+    p.value.toLowerCase().includes(pairSearch.toLowerCase())
+  );
 
   return (
     <div className="max-w-xl mx-auto py-10 px-4">
@@ -121,13 +186,32 @@ export default function Home() {
       <p className="mb-4 text-sm text-gray-600 dark:text-gray-300">Signal <b>WAIT</b> artinya: <span className="text-yellow-600">Tunggu, jangan lakukan apapun sampai ada signal BUY/SELL.</span></p>
       <form onSubmit={handleSubmit} className="space-y-4 bg-white dark:bg-gray-900 p-6 rounded shadow">
         <div>
+          <label className="block font-medium mb-1">Sumber Data</label>
+          <select
+            className="w-full border rounded p-2 bg-white dark:bg-gray-800 shadow focus:outline-none focus:ring-2 focus:ring-yellow-400"
+            value={source}
+            onChange={(e) => setSource(e.target.value)}
+          >
+            {SOURCES.map((s) => (
+              <option key={s.value} value={s.value}>{s.label}</option>
+            ))}
+          </select>
+        </div>
+        <div>
           <label className="block font-medium mb-1">Pair</label>
+          <input
+            type="text"
+            placeholder="Cari pair..."
+            className="w-full border rounded p-2 mb-2 bg-white dark:bg-gray-800 shadow"
+            value={pairSearch}
+            onChange={e => setPairSearch(e.target.value)}
+          />
           <select
             className="w-full border rounded p-2 bg-white dark:bg-gray-800 shadow focus:outline-none focus:ring-2 focus:ring-yellow-400"
             value={pair}
             onChange={(e) => setPair(e.target.value)}
           >
-            {PAIRS.map((p) => (
+            {pairList.map((p) => (
               <option key={p.value} value={p.value}>{p.label}</option>
             ))}
           </select>
@@ -184,6 +268,18 @@ export default function Home() {
             })}
           </div>
         </div>
+        <div>
+          <label className="block font-medium mb-1">Auto Refresh</label>
+          <select
+            className="w-full border rounded p-2 bg-white dark:bg-gray-800 shadow focus:outline-none focus:ring-2 focus:ring-yellow-400"
+            value={refreshInterval}
+            onChange={e => setRefreshInterval(Number(e.target.value))}
+          >
+            {REFRESH_OPTIONS.map(opt => (
+              <option key={opt.value} value={opt.value}>{opt.label}</option>
+            ))}
+          </select>
+        </div>
         <button
           type="submit"
           className="w-full bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-2 px-4 rounded"
@@ -196,6 +292,15 @@ export default function Home() {
         <div className="mt-8 bg-gray-100 dark:bg-gray-800 p-4 rounded">
           <h2 className="text-lg font-semibold mb-2">Hasil Signal</h2>
           <div className="mb-2">Signal: <span className="font-bold text-xl">{result.signal}</span></div>
+          <div className="mb-2">Posisi: <span className={`font-bold text-xl ${result.signal === 'BUY' ? 'text-green-600' : result.signal === 'SELL' ? 'text-red-600' : 'text-yellow-600'}`}>{result.signal}</span></div>
+          <div className="mb-2">Current Price: <span className="font-mono text-lg">{result.close}</span></div>
+          {(result.signal === 'BUY' || result.signal === 'SELL') && result.openPositionPrice !== undefined && (
+            <>
+              <div className="mb-2">Open Position Price: <span className="font-mono text-lg">{result.openPositionPrice}</span></div>
+              {result.tp !== undefined && <div className="mb-2">TP: <span className="font-mono text-lg text-green-600">{result.tp}</span></div>}
+              {result.sl !== undefined && <div className="mb-2">SL: <span className="font-mono text-lg text-red-600">{result.sl}</span></div>}
+            </>
+          )}
           {result.signal === "WAIT" && (
             <div className="mb-2 p-2 bg-yellow-100 text-yellow-800 rounded">Tunggu, jangan lakukan apapun.</div>
           )}
@@ -208,16 +313,18 @@ export default function Home() {
           <div>
             <h3 className="font-semibold">Indikator:</h3>
             <ul className="list-disc ml-5">
-              {Object.entries(result.indicators || {}).map(([key, val]) => (
-                <li key={key}>
-                  {key.toUpperCase()}: {typeof val === "object" ? JSON.stringify(val) : val}
-                </li>
+              {['rsi', 'macd', 'ma', 'bb', 'stoch', 'cci', 'atr', 'adx', 'volume', 'close'].map(key => (
+                (result.indicators as any)[key] !== undefined && (
+                  <li key={key}>
+                    {key.toUpperCase()}: {typeof (result.indicators as any)[key] === 'object' && !Array.isArray((result.indicators as any)[key]) ? JSON.stringify((result.indicators as any)[key]) : (result.indicators as any)[key]}
+                  </li>
+                )
               ))}
             </ul>
           </div>
           {result.ohlc && (
             <div className="mt-6">
-              <Chart ohlc={result.ohlc} signal={result.signal} indicators={{ rsiArr: result.indicators.rsiArr, maArr: result.indicators.maArr, macdArr: result.indicators.macdArr }} />
+              <Chart ohlc={result.ohlc} signal={result.signal} indicators={{ rsiArr: (result.indicators as any).rsiArr, maArr: (result.indicators as any).maArr, macdArr: (result.indicators as any).macdArr }} />
             </div>
           )}
         </div>
