@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect, useRef } from "react";
 import dynamic from "next/dynamic";
+import Select from "react-select";
 
 const INDICATORS = [
   { label: "RSI", value: "rsi", params: [{ name: "upper", label: "Upper", default: 70 }, { name: "lower", label: "Lower", default: 30 }, { name: "period", label: "Period", default: 14 }] },
@@ -94,7 +95,9 @@ export default function Home() {
   const [source, setSource] = useState('yahoo');
   const [mt5Pairs, setMt5Pairs] = useState<{ label: string; value: string }[]>([]);
   const [refreshInterval, setRefreshInterval] = useState(0); // ms
-  const [pairSearch, setPairSearch] = useState("");
+  const [volume, setVolume] = useState(0.01);
+  const [targetProfit, setTargetProfit] = useState(1);
+  const [targetLoss, setTargetLoss] = useState(0.5);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
@@ -123,6 +126,9 @@ export default function Home() {
         timeframe,
         indicators: selectedIndicators,
         source,
+        volume,
+        targetProfit,
+        targetLoss,
       }),
     });
     const data = await res.json();
@@ -174,11 +180,9 @@ export default function Home() {
     fetchSignal();
   };
 
-  // Filter pair list by search
-  const pairList = (source === 'mt5' ? mt5Pairs : PAIRS_YAHOO).filter(p =>
-    p.label.toLowerCase().includes(pairSearch.toLowerCase()) ||
-    p.value.toLowerCase().includes(pairSearch.toLowerCase())
-  );
+  const pairList = source === 'mt5' ? mt5Pairs : PAIRS_YAHOO;
+  const pairOptions = pairList.map(p => ({ label: p.label, value: p.value }));
+  const selectedPairOption = pairOptions.find(opt => opt.value === pair) || null;
 
   return (
     <div className="max-w-xl mx-auto py-10 px-4">
@@ -199,22 +203,54 @@ export default function Home() {
         </div>
         <div>
           <label className="block font-medium mb-1">Pair</label>
-          <input
-            type="text"
-            placeholder="Cari pair..."
-            className="w-full border rounded p-2 mb-2 bg-white dark:bg-gray-800 shadow"
-            value={pairSearch}
-            onChange={e => setPairSearch(e.target.value)}
+          <Select
+            className="react-select-container"
+            classNamePrefix="react-select"
+            options={pairOptions}
+            value={selectedPairOption}
+            onChange={opt => setPair(opt ? opt.value : "")}
+            isSearchable
+            placeholder="Pilih atau cari pair..."
+            styles={{
+              container: base => ({ ...base, width: '100%' }),
+              menu: base => ({ ...base, zIndex: 20 }),
+            }}
           />
-          <select
-            className="w-full border rounded p-2 bg-white dark:bg-gray-800 shadow focus:outline-none focus:ring-2 focus:ring-yellow-400"
-            value={pair}
-            onChange={(e) => setPair(e.target.value)}
-          >
-            {pairList.map((p) => (
-              <option key={p.value} value={p.value}>{p.label}</option>
-            ))}
-          </select>
+        </div>
+        <div className="flex gap-2">
+          <div className="flex-1">
+            <label className="block font-medium mb-1">Volume (lot)</label>
+            <input
+              type="number"
+              min={0.01}
+              step={0.01}
+              className="w-full border rounded p-2 bg-white dark:bg-gray-800 shadow"
+              value={volume}
+              onChange={e => setVolume(Number(e.target.value))}
+            />
+          </div>
+          <div className="flex-1">
+            <label className="block font-medium mb-1">Target Profit (%)</label>
+            <input
+              type="number"
+              min={0.1}
+              step={0.1}
+              className="w-full border rounded p-2 bg-white dark:bg-gray-800 shadow"
+              value={targetProfit}
+              onChange={e => setTargetProfit(Number(e.target.value))}
+            />
+          </div>
+          <div className="flex-1">
+            <label className="block font-medium mb-1">Target Loss (%)</label>
+            <input
+              type="number"
+              min={0.1}
+              step={0.1}
+              className="w-full border rounded p-2 bg-white dark:bg-gray-800 shadow"
+              value={targetLoss}
+              onChange={e => setTargetLoss(Number(e.target.value))}
+            />
+          </div>
         </div>
         <div>
           <label className="block font-medium mb-1">Timeframe</label>
@@ -291,6 +327,8 @@ export default function Home() {
       {result && (
         <div className="mt-8 bg-gray-100 dark:bg-gray-800 p-4 rounded">
           <h2 className="text-lg font-semibold mb-2">Hasil Signal</h2>
+          <div className="mb-2">Volume: <span className="font-mono text-lg">{volume}</span> lot</div>
+          <div className="mb-2">Target Profit: <span className="font-mono text-lg">{targetProfit}%</span> &nbsp;|&nbsp; Target Loss: <span className="font-mono text-lg">{targetLoss}%</span></div>
           <div className="mb-2">Signal: <span className="font-bold text-xl">{result.signal}</span></div>
           <div className="mb-2">Posisi: <span className={`font-bold text-xl ${result.signal === 'BUY' ? 'text-green-600' : result.signal === 'SELL' ? 'text-red-600' : 'text-yellow-600'}`}>{result.signal}</span></div>
           <div className="mb-2">Current Price: <span className="font-mono text-lg">{result.close}</span></div>
