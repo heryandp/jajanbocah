@@ -351,18 +351,35 @@ export default function Home() {
           <div>
             <h3 className="font-semibold">Indikator:</h3>
             <ul className="list-disc ml-5">
-              {['rsi', 'macd', 'ma', 'bb', 'stoch', 'cci', 'atr', 'adx', 'volume', 'close'].map(key => (
-                (result.indicators as any)[key] !== undefined && (
-                  <li key={key}>
-                    {key.toUpperCase()}: {typeof (result.indicators as any)[key] === 'object' && !Array.isArray((result.indicators as any)[key]) ? JSON.stringify((result.indicators as any)[key]) : (result.indicators as any)[key]}
-                  </li>
-                )
-              ))}
+              {(() => {
+                const indicators = result.indicators as IndicatorResult;
+                return (['rsi', 'macd', 'ma', 'bb', 'stoch', 'cci', 'atr', 'adx', 'volume', 'close'] as (keyof IndicatorResult)[]).map(key => {
+                  const value = indicators[key];
+                  if (value === undefined) return null;
+                  let displayValue: string | number = '';
+                  if (Array.isArray(value)) {
+                    displayValue = JSON.stringify(value);
+                  } else if (typeof value === 'object') {
+                    displayValue = JSON.stringify(value);
+                  } else {
+                    displayValue = value;
+                  }
+                  return (
+                    <li key={key}>
+                      {key.toUpperCase()}: {displayValue}
+                    </li>
+                  );
+                });
+              })()}
             </ul>
           </div>
           {result.ohlc && (
             <div className="mt-6">
-              <Chart ohlc={result.ohlc} signal={result.signal} indicators={{ rsiArr: (result.indicators as any).rsiArr, maArr: (result.indicators as any).maArr, macdArr: (result.indicators as any).macdArr }} />
+              <Chart ohlc={result.ohlc} signal={result.signal} indicators={{
+                rsiArr: (result.indicators as IndicatorResult).rsiArr,
+                maArr: (result.indicators as IndicatorResult).maArr,
+                macdArr: (result.indicators as IndicatorResult).macdArr
+              }} />
             </div>
           )}
         </div>

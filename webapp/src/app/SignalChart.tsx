@@ -85,9 +85,9 @@ export default function SignalChart({ ohlc, signal, indicators }: { ohlc: OhlcPo
       const last = ohlc[ohlc.length - 1];
       const marker = {
         time: toChartTime(last.time),
-        position: signal === "BUY" ? "belowBar" : "aboveBar",
+        position: signal === "BUY" ? "belowBar" as const : "aboveBar" as const,
         color: signal === "BUY" ? "#22c55e" : "#ef4444",
-        shape: signal === "BUY" ? "arrowUp" : "arrowDown",
+        shape: signal === "BUY" ? "arrowUp" as const : "arrowDown" as const,
         text: signal,
       };
       mainSeries.setMarkers([marker]);
@@ -113,11 +113,19 @@ export default function SignalChart({ ohlc, signal, indicators }: { ohlc: OhlcPo
     <button
       onClick={() => {
         if (chartRef.current) {
-          const dataUrl = chartRef.current.takeScreenshot();
-          const a = document.createElement('a');
-          a.href = dataUrl;
-          a.download = 'chart.png';
-          a.click();
+          const screenshot = chartRef.current.takeScreenshot();
+          let dataUrl = '';
+          if (typeof screenshot === 'string') {
+            dataUrl = screenshot;
+          } else if (screenshot instanceof HTMLCanvasElement) {
+            dataUrl = screenshot.toDataURL();
+          }
+          if (dataUrl) {
+            const a = document.createElement('a');
+            a.href = dataUrl;
+            a.download = 'chart.png';
+            a.click();
+          }
         }
       }}
       className="mt-2 px-4 py-2 bg-yellow-500 text-white rounded"
